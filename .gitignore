@@ -13,8 +13,8 @@
 /build
 /captures
 .externalNativeBuild
-downloader/
-samples/
+/downloader/
+/samples/
 
 # Intellij
 *.ipr
