@@ -1,37 +1,359 @@
-## Welcome to GitHub Pages
+Android Downloader is a open source multithread and mulitask downloadInfo framework for Android.
 
-You can use the [editor on GitHub](https://github.com/lifengsofts/AndroidDownloader/edit/gh-pages/index.md) to maintain and preview the content for your website in Markdown files.
+Try out the sample application [on the Apk file][20].
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+![AndroidDownloader Sample Screenshots][30]
 
-### Markdown
+Download
+=======
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+You can download a jar from GitHub's [releases page][40].
 
-```markdown
-Syntax highlighted code block
+Or use Gradle:
 
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+```gradle
+dependencies {
+  compile 'cn.woblog.android:downloader:1.0.0'
+}
 ```
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+Or Maven:
 
-### Jekyll Themes
+```xml
+<dependency>
+  <groupId>cn.woblog.android</groupId>
+  <artifactId>downloader</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/lifengsofts/AndroidDownloader/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+For info on using the bleeding edge, see the [Snapshots][50] wiki page.
 
-### Support or Contact
+ProGuard
+=======
 
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+If your project uses ProGuard, you need to add the following configuration to your project proguard-rules.pro file
+
+```pro
+-keep public class * implements cn.woblog.android.downloader.db.DownloadDBController
+```
+
+How do I use Android Downloader?
+=======
+
+For more information on [GitHub wiki][200] and [Javadocs][201].
+
+0.Add network network permissions()
+-------
+
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+1.Configuration download service
+--------------------------------
+
+```xml
+<service android:name="cn.woblog.android.downloader.DownloadService">
+  <intent-filter>
+    <action android:name="cn.woblog.android.downloader.DOWNLOAD_SERVICE" />
+  </intent-filter>
+</service>
+```
+
+2.Create a DownloadManager instance
+-----------------------------------
+
+```java
+downloadManager = DownloadService.getDownloadManager(context.getApplicationContext());
+```
+
+Simple use as follows
+
+3.Download a file
+-----------------
+
+```java
+//create download info set download uri and save path.
+final DownloadInfo downloadInfo = new DownloadInfo.Builder().setUrl("http://example.com/a.apk")
+    .setPath("/sdcard/a.apk")
+    .build();
+
+//set download callback.
+downloadInfo.setDownloadListener(new DownloadListener() {
+
+  @Override
+  public void onStart() {
+    tv_download_info.setText("Prepare downloading");
+  }
+
+  @Override
+  public void onWaited() {
+    tv_download_info.setText("Waiting");
+    bt_download_button.setText("Pause");
+  }
+
+  @Override
+  public void onPaused() {
+    bt_download_button.setText("Continue");
+    tv_download_info.setText("Paused");
+  }
+
+  @Override
+  public void onDownloading(long progress, long size) {
+    tv_download_info
+        .setText(FileUtil.formatFileSize(progress) + "/" + FileUtil
+            .formatFileSize(size));
+    bt_download_button.setText("Pause");
+  }
+
+  @Override
+  public void onRemoved() {
+    bt_download_button.setText("Download");
+    tv_download_info.setText("");
+    downloadInfo = null;
+  }
+
+  @Override
+  public void onDownloadSuccess() {
+    bt_download_button.setText("Delete");
+    tv_download_info.setText("Download success");
+  }
+
+  @Override
+  public void onDownloadFailed(DownloadException e) {
+    e.printStackTrace();
+    tv_download_info.setText("Download fail:" + e.getMessage());
+  }
+});
+
+//submit download info to download manager.
+downloadManager.download(downloadInfo);
+```
+
+4.Use in list
+-------------
+
+The default is to use the RecyclerView.
+
+```java
+class ViewHolder extends RecyclerView.ViewHolder {
+
+  private final ImageView iv_icon;
+  private final TextView tv_size;
+  private final TextView tv_status;
+  private final ProgressBar pb;
+  private final TextView tv_name;
+  private final Button bt_action;
+  private DownloadInfo downloadInfo;
+
+  public ViewHolder(View view) {
+    super(view);
+
+    iv_icon = (ImageView) view.findViewById(R.id.iv_icon);
+    tv_size = (TextView) view.findViewById(R.id.tv_size);
+    tv_status = (TextView) view.findViewById(R.id.tv_status);
+    pb = (ProgressBar) view.findViewById(R.id.pb);
+    tv_name = (TextView) view.findViewById(R.id.tv_name);
+    bt_action = (Button) view.findViewById(R.id.bt_action);
+  }
+
+  @SuppressWarnings("unchecked")
+  public void bindData(final MyDownloadInfo data, int position, final Context context) {
+    Glide.with(context).load(data.getIcon()).into(iv_icon);
+    tv_name.setText(data.getName());
+
+    // Get download task status
+    downloadInfo = downloadManager.getDownloadById(data.getUrl().hashCode());
+
+    // Set a download listener
+    if (downloadInfo != null) {
+      downloadInfo
+          .setDownloadListener(new MyDownloadListener(new SoftReference(ViewHolder.this)) {
+            //  Call interval about one second
+            @Override
+            public void onRefresh() {
+              if (getUserTag() != null && getUserTag().get() != null) {
+                ViewHolder viewHolder = (ViewHolder) getUserTag().get();
+                viewHolder.refresh();
+              }
+            }
+          });
+
+    }
+
+    refresh();
+
+//      Download button
+    bt_action.setOnClickListener(new OnClickListener() {
+      @Override
+      public void onClick(View v) {
+        if (downloadInfo != null) {
+
+          switch (downloadInfo.getStatus()) {
+            case DownloadInfo.STATUS_NONE:
+            case DownloadInfo.STATUS_PAUSED:
+            case DownloadInfo.STATUS_ERROR:
+
+              //resume downloadInfo
+              downloadManager.resume(downloadInfo);
+              break;
+
+            case DownloadInfo.STATUS_DOWNLOADING:
+            case DownloadInfo.STATUS_PREPARE_DOWNLOAD:
+            case STATUS_WAIT:
+              //pause downloadInfo
+              downloadManager.pause(downloadInfo);
+              break;
+            case DownloadInfo.STATUS_COMPLETED:
+              downloadManager.remove(downloadInfo);
+              break;
+          }
+        } else {
+//            Create new download task
+          File d = new File(Environment.getExternalStorageDirectory().getAbsolutePath(), "d");
+          if (!d.exists()) {
+            d.mkdirs();
+          }
+          String path = d.getAbsolutePath().concat("/").concat(data.getName());
+          downloadInfo = new Builder().setUrl(data.getUrl())
+              .setPath(path)
+              .build();
+          downloadInfo
+              .setDownloadListener(new MyDownloadListener(new SoftReference(ViewHolder.this)) {
+
+                @Override
+                public void onRefresh() {
+                  if (getUserTag() != null && getUserTag().get() != null) {
+                    ViewHolder viewHolder = (ViewHolder) getUserTag().get();
+                    viewHolder.refresh();
+                  }
+                }
+              });
+          downloadManager.download(downloadInfo);
+        }
+      }
+    });
+
+  }
+
+  private void refresh() {
+    if (downloadInfo == null) {
+      tv_size.setText("");
+      pb.setProgress(0);
+      bt_action.setText("Download");
+      tv_status.setText("not downloadInfo");
+    } else {
+      switch (downloadInfo.getStatus()) {
+        case DownloadInfo.STATUS_NONE:
+          bt_action.setText("Download");
+          tv_status.setText("not downloadInfo");
+          break;
+        case DownloadInfo.STATUS_PAUSED:
+        case DownloadInfo.STATUS_ERROR:
+          bt_action.setText("Continue");
+          tv_status.setText("paused");
+          try {
+            pb.setProgress((int) (downloadInfo.getProgress() * 100.0 / downloadInfo.getSize()));
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+          tv_size.setText(FileUtil.formatFileSize(downloadInfo.getProgress()) + "/" + FileUtil
+              .formatFileSize(downloadInfo.getSize()));
+          break;
+
+        case DownloadInfo.STATUS_DOWNLOADING:
+        case DownloadInfo.STATUS_PREPARE_DOWNLOAD:
+          bt_action.setText("Pause");
+          try {
+            pb.setProgress((int) (downloadInfo.getProgress() * 100.0 / downloadInfo.getSize()));
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+          tv_size.setText(FileUtil.formatFileSize(downloadInfo.getProgress()) + "/" + FileUtil
+              .formatFileSize(downloadInfo.getSize()));
+          tv_status.setText("downloading");
+          break;
+        case STATUS_COMPLETED:
+          bt_action.setText("Delete");
+          try {
+            pb.setProgress((int) (downloadInfo.getProgress() * 100.0 / downloadInfo.getSize()));
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+          tv_size.setText(FileUtil.formatFileSize(downloadInfo.getProgress()) + "/" + FileUtil
+              .formatFileSize(downloadInfo.getSize()));
+          tv_status.setText("success");
+          break;
+        case STATUS_REMOVED:
+          tv_size.setText("");
+          pb.setProgress(0);
+          bt_action.setText("Download");
+          tv_status.setText("not downloadInfo");
+        case STATUS_WAIT:
+          tv_size.setText("");
+          pb.setProgress(0);
+          bt_action.setText("Pause");
+          tv_status.setText("Waiting");
+          break;
+      }
+
+    }
+  }
+}
+```
+
+Compatibility
+=======
+
+* **Android SDK**: Android Downloader requires a minimum API level of 10.
+
+
+Build
+=======
+
+
+Samples
+=======
+
+Follow the steps in the [Build][60] section to setup the project and then:
+
+```gradle
+./gradlew :samples:run
+```
+
+You may also find precompiled APKs on the releases page.
+
+Author
+=======
+
+Patsy - @Patsysoft on GitHub, Email is patsysoft@gmail.com.
+
+
+License
+=======
+
+    Copyright 2016 Renpingqing, All Rights Reserved.
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+
+
+[20]: https://i.woblog.cn
+[30]: https://raw.github.com/lifengsofts/AndroidDownloader/master/samples/art/screenshot.png
+[40]: https://github.com/lifengsofts/AndroidDownloader/releases
+[50]: https://github.com/lifengsofts/AndroidDownloader/releases
+[60]: https://github.com/lifengsofts/AndroidDownloader#build
+
+[200]: https://github.com/lifengsofts/AndroidDownloader/wiki
+[201]: http://i.woblog.cn/AndroidDownloader/javadocs/1.0.1/
