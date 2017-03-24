@@ -1,9 +1,3 @@
-Android Downloader is a open source multithread and mulitask downloadInfo framework for Android.
-
-Try out the sample application [on the Apk file][20].
-
-![AndroidDownloader Sample Screenshots][30]
-
 Download
 =======
 
